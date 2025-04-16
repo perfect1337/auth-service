@@ -7,7 +7,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/perfect1337/auth-service/internal/config"
-	"github.com/perfect1337/auth-service/internal/delivery/http"
+	http "github.com/perfect1337/auth-service/internal/delivery"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
 )
@@ -32,7 +32,13 @@ func main() {
 	// Инициализация HTTP сервера
 	router := gin.Default()
 
-	// Настройка CORS
+	// Логирование запросов (должно быть первым middleware)
+	router.Use(func(c *gin.Context) {
+		log.Printf("Request: %s %s", c.Request.Method, c.Request.URL.Path)
+		c.Next()
+	})
+
+	// Настройка CORS (должно быть перед обработчиками маршрутов)
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -41,36 +47,28 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-	if cfg.Migrations.Enable {
-		log.Println("Applying migrations...")
-		if err := repo.RunMigrations(); err != nil {
-			log.Fatalf("failed to apply migrations: %v", err)
-		}
-		log.Println("Migrations applied successfully")
-	}
-	// Логирование запросов
-	router.Use(func(c *gin.Context) {
-		log.Printf("Request: %s %s", c.Request.Method, c.Request.URL.Path)
-		c.Next()
-	})
 
 	// Инициализация обработчиков
 	authHandler := http.NewAuthHandler(authUC)
 
-	// Роуты
+	// Основной health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Группа аутентификации
 	auth := router.Group("/auth")
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.POST("/logout", authHandler.Logout)
+		auth.GET("/health", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "auth ok"})
+		})
 	}
 
-	// Запуск сервера
+	// Запуск сервера (должен быть последним)
 	log.Printf("Server is running on port %s", cfg.Server.Port)
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("failed to run server: %v", err)

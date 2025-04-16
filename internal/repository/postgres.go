@@ -3,93 +3,48 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
-	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/entity"
 )
 
-type Postgres struct {
-	db *sql.DB
-}
-
 var migrationsFS embed.FS
 
-func (p *Postgres) RunMigrations() error {
-	d, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("failed to create iofs: %w", err)
-	}
-
-	m, err := migrate.NewWithSourceInstance("iofs", d,
-		fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-			p.cfg.Postgres.User,
-			p.cfg.Postgres.Password,
-			p.cfg.Postgres.Host,
-			p.cfg.Postgres.Port,
-			p.cfg.Postgres.DBName,
-			p.cfg.Postgres.SSLMode,
-		))
-	if err != nil {
-		return fmt.Errorf("failed to create migrate instance: %w", err)
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to apply migrations: %w", err)
-	}
-
-	version, dirty, err := m.Version()
-	if err != nil && err != migrate.ErrNilVersion {
-		return fmt.Errorf("failed to get migration version: %w", err)
-	}
-
-	log.Printf("Migrations applied. Current version: %d, dirty: %v", version, dirty)
-	return nil
-}
-func NewPostgres(cfg *config.Config) (*Postgres, error) {
-	db, err := sql.Open("postgres", fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Postgres.Host,
-		cfg.Postgres.Port,
-		cfg.Postgres.User,
-		cfg.Postgres.Password,
-		cfg.Postgres.DBName,
-		cfg.Postgres.SSLMode,
-	))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open db: %w", err)
-	}
-
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping db: %w", err)
-	}
-
-	return &Postgres{db: db}, nil
+type Postgres struct {
+	db  *sql.DB
+	cfg *config.Config
 }
 
-func (p *Postgres) CreateUser(ctx context.Context, user *entity.User) error {
-	query := `INSERT INTO users (username, email, password_hash, role) 
-	          VALUES ($1, $2, $3, $4) RETURNING id`
+func (p *Postgres) GetUserByID(ctx context.Context, id int) (*entity.User, error) {
+	query := `SELECT id, username, email, password_hash, role 
+              FROM users 
+              WHERE id = $1`
 
-	err := p.db.QueryRowContext(ctx, query,
-		user.Username,
-		user.Email,
-		user.PasswordHash,
-		user.Role,
-	).Scan(&user.ID)
+	var user entity.User
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+	)
 
 	if err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	return nil
+	return &user, nil
 }
-
 func (p *Postgres) GetUserByCredentials(ctx context.Context, login, passwordHash string) (*entity.User, error) {
 	query := `SELECT id, username, email, password_hash, role 
-	          FROM users 
-	          WHERE (username = $1 OR email = $1) AND password_hash = $2`
+              FROM users 
+              WHERE (username = $1 OR email = $1) AND password_hash = $2`
 
 	var user entity.User
 	err := p.db.QueryRowContext(ctx, query, login, passwordHash).Scan(
@@ -108,6 +63,110 @@ func (p *Postgres) GetUserByCredentials(ctx context.Context, login, passwordHash
 	}
 
 	return &user, nil
+}
+func (p *Postgres) GetUserByLogin(ctx context.Context, login string) (*entity.User, error) {
+	query := `SELECT id, username, email, password_hash, role 
+              FROM users 
+              WHERE username = $1 OR email = $1`
+
+	var user entity.User
+	err := p.db.QueryRowContext(ctx, query, login).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return &user, nil
+}
+func NewPostgres(cfg *config.Config) (*Postgres, error) {
+	connStr := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Postgres.Host,
+		cfg.Postgres.Port,
+		cfg.Postgres.User,
+		cfg.Postgres.Password,
+		cfg.Postgres.DBName,
+		cfg.Postgres.SSLMode,
+	)
+
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open db: %w", err)
+	}
+
+	if err = db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping db: %w", err)
+	}
+
+	return &Postgres{db: db, cfg: cfg}, nil
+}
+
+func (p *Postgres) RunMigrations() error {
+	// Проверка существования файлов миграций
+	// entries, err := migrationsFS.ReadDir("migrations")
+	// if err != nil {
+	// 	return fmt.Errorf("cannot read migrations dir: %w", err)
+	// }
+	// log.Printf("Found %d migration files", len(entries))
+
+	// // Инициализация миграций
+	// d, err := iofs.New(migrationsFS, "migrations")
+	// if err != nil {
+	// 	return fmt.Errorf("failed to create iofs: %w", err)
+	return nil
+}
+
+// 	m, err := migrate.NewWithSourceInstance("iofs", d,
+// 		fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+// 			p.cfg.Postgres.User,
+// 			p.cfg.Postgres.Password,
+// 			p.cfg.Postgres.Host,
+// 			p.cfg.Postgres.Port,
+// 			p.cfg.Postgres.DBName,
+// 			p.cfg.Postgres.SSLMode,
+// 		))
+// 	if err != nil {
+// 		return fmt.Errorf("failed to create migrate instance: %w", err)
+// 	}
+
+// 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+// 		return fmt.Errorf("failed to apply migrations: %w", err)
+// 	}
+
+// 	version, dirty, err := m.Version()
+// 	if err != nil && err != migrate.ErrNilVersion {
+// 		return fmt.Errorf("failed to get migration version: %w", err)
+// 	}
+
+// 	log.Printf("Migrations applied. Current version: %d, dirty: %v", version, dirty)
+// 	return nil
+// }
+
+func (p *Postgres) CreateUser(ctx context.Context, user *entity.User) error {
+	query := `INSERT INTO users (username, email, password_hash, role) 
+	          VALUES ($1, $2, $3, $4) RETURNING id`
+
+	err := p.db.QueryRowContext(ctx, query,
+		user.Username,
+		user.Email,
+		user.PasswordHash,
+		user.Role,
+	).Scan(&user.ID)
+
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	return nil
 }
 
 func (p *Postgres) CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error {

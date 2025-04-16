@@ -53,7 +53,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 }
 
 func (uc *AuthUseCase) Login(ctx context.Context, login, password string) (*entity.AuthResponse, error) {
-	user, err := uc.repo.GetUserByCredentials(ctx, login, password)
+	user, err := uc.repo.GetUserByLogin(ctx, login)
 	if err != nil {
 		return nil, fmt.Errorf("invalid credentials: %w", err)
 	}
