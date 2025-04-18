@@ -1,10 +1,14 @@
-package http
+package delivery
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/usecase"
 )
 
@@ -39,8 +43,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req struct {
-		Login    string `json:"login" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=6"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -48,7 +52,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	authResponse, err := h.uc.Login(c.Request.Context(), req.Login, req.Password)
+	authResponse, err := h.uc.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
@@ -118,4 +122,75 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusOK, gin.H{"message": "successfully logged out"})
+}
+func extractToken(c *gin.Context) string {
+	// 1. Проверяем Authorization header
+	tokenString := c.GetHeader("Authorization")
+	if tokenString != "" {
+		return strings.Replace(tokenString, "Bearer ", "", 1)
+	}
+
+	// 2. Проверяем cookie
+	tokenString, _ = c.Cookie("access_token")
+	if tokenString != "" {
+		return tokenString
+	}
+
+	// 3. Проверяем query parameter
+	tokenString = c.Query("token")
+	return tokenString
+}
+func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := extractToken(c)
+		if tokenString == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization token required"})
+			return
+		}
+
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(cfg.Auth.SecretKey), nil
+		})
+
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			// Проверяем expiration
+			if exp, ok := claims["exp"].(float64); ok {
+				if time.Now().Unix() > int64(exp) {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
+					return
+				}
+			}
+
+			c.Set("user_id", claims["user_id"])
+			c.Next()
+		} else {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		}
+	}
+}
+func (h *AuthHandler) ValidateToken(c *gin.Context) {
+	tokenString := c.Query("token")
+	if tokenString == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"valid": false})
+		return
+	}
+
+	_, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(h.uc.SecretKey), nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"valid": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"valid": true})
 }

@@ -14,4 +14,5 @@ type UserRepository interface {
 	CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error
 	GetRefreshToken(ctx context.Context, token string) (*entity.RefreshToken, error)
 	DeleteRefreshToken(ctx context.Context, token string) error
+	GetUserByEmail(ctx context.Context, email string) (*entity.User, error)
 }

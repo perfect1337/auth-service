@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/perfect1337/auth-service/internal/entity"
@@ -17,7 +18,7 @@ import (
 
 type AuthUseCase struct {
 	repo       repository.UserRepository
-	secretKey  string
+	SecretKey  string
 	accessTTL  time.Duration
 	refreshTTL time.Duration
 }
@@ -25,7 +26,7 @@ type AuthUseCase struct {
 func NewAuthUseCase(repo repository.UserRepository, secretKey string, accessTTL, refreshTTL time.Duration) *AuthUseCase {
 	return &AuthUseCase{
 		repo:       repo,
-		secretKey:  secretKey,
+		SecretKey:  secretKey,
 		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
 	}
@@ -52,20 +53,52 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 	return uc.generateAuthResponse(ctx, user)
 }
 
-func (uc *AuthUseCase) Login(ctx context.Context, login, password string) (*entity.AuthResponse, error) {
-	user, err := uc.repo.GetUserByLogin(ctx, login)
+func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*entity.AuthResponse, error) {
+	log.Printf("Looking for user with email: %s", email)
+
+	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("invalid credentials: %w", err)
+		log.Printf("User not found: %v", err)
+		return nil, fmt.Errorf("user not found")
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-	if err != nil {
-		return nil, fmt.Errorf("invalid credentials: %w", err)
+	log.Printf("Found user: %s", user.Username)
+
+	// Проверка пароля
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		log.Printf("Password mismatch for user %s", user.Email)
+		return nil, fmt.Errorf("invalid password")
 	}
 
-	return uc.generateAuthResponse(ctx, user)
+	// Генерация токенов
+	accessToken, err := uc.generateAccessToken(user)
+	if err != nil {
+		log.Printf("Failed to generate access token: %v", err)
+		return nil, fmt.Errorf("failed to generate token")
+	}
+
+	refreshToken, expiresAt, err := uc.generateRefreshToken()
+	if err != nil {
+		log.Printf("Failed to generate refresh token: %v", err)
+		return nil, fmt.Errorf("failed to generate refresh token")
+	}
+
+	// Сохранение refresh токена
+	if err := uc.repo.CreateRefreshToken(ctx, &entity.RefreshToken{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: expiresAt,
+	}); err != nil {
+		log.Printf("Failed to save refresh token: %v", err)
+		return nil, fmt.Errorf("failed to save refresh token")
+	}
+
+	return &entity.AuthResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         *user,
+	}, nil
 }
-
 func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (*entity.AuthResponse, error) {
 	token, err := uc.repo.GetRefreshToken(ctx, refreshToken)
 	if err != nil {
@@ -130,7 +163,7 @@ func (uc *AuthUseCase) generateAccessToken(user *entity.User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(uc.secretKey))
+	return token.SignedString([]byte(uc.SecretKey))
 }
 
 func (uc *AuthUseCase) generateRefreshToken() (string, time.Time, error) {

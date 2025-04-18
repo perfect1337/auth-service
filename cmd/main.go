@@ -7,7 +7,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/perfect1337/auth-service/internal/config"
-	http "github.com/perfect1337/auth-service/internal/delivery"
+	"github.com/perfect1337/auth-service/internal/delivery"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
 )
@@ -15,13 +15,18 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Инициализация репозитория
+	// Initialize repository
 	repo, err := repository.NewPostgres(cfg)
 	if err != nil {
 		log.Fatalf("failed to initialize repository: %v", err)
 	}
 
-	// Инициализация usecase
+	// Run migrations
+	if err := repo.RunMigrations(); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
+
+	// Initialize usecase
 	authUC := usecase.NewAuthUseCase(
 		repo,
 		cfg.Auth.SecretKey,
@@ -29,16 +34,16 @@ func main() {
 		cfg.Auth.RefreshTokenDuration,
 	)
 
-	// Инициализация HTTP сервера
+	// Initialize HTTP server
 	router := gin.Default()
 
-	// Логирование запросов (должно быть первым middleware)
+	// Request logging middleware
 	router.Use(func(c *gin.Context) {
 		log.Printf("Request: %s %s", c.Request.Method, c.Request.URL.Path)
 		c.Next()
 	})
 
-	// Настройка CORS (должно быть перед обработчиками маршрутов)
+	// CORS configuration
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -48,27 +53,35 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Инициализация обработчиков
-	authHandler := http.NewAuthHandler(authUC)
+	// Initialize handlers
+	authHandler := delivery.NewAuthHandler(authUC)
 
-	// Основной health check
+	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Группа аутентификации
+	// Auth routes
 	auth := router.Group("/auth")
 	{
+		// Public routes
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
-		auth.POST("/refresh", authHandler.Refresh)
-		auth.POST("/logout", authHandler.Logout)
+		auth.GET("/validate", authHandler.ValidateToken)
 		auth.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "auth ok"})
 		})
+
+		// Protected routes (require authentication)
+		protected := auth.Group("")
+		protected.Use(delivery.AuthMiddleware(cfg))
+		{
+			protected.POST("/refresh", authHandler.Refresh)
+			protected.POST("/logout", authHandler.Logout)
+		}
 	}
 
-	// Запуск сервера (должен быть последним)
+	// Start server
 	log.Printf("Server is running on port %s", cfg.Server.Port)
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("failed to run server: %v", err)

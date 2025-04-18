@@ -3,15 +3,17 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"embed"
 	"fmt"
+	"log"
+	"os"
 
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	_ "github.com/lib/pq"
 	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/entity"
 )
-
-var migrationsFS embed.FS
 
 type Postgres struct {
 	db  *sql.DB
@@ -19,8 +21,8 @@ type Postgres struct {
 }
 
 func (p *Postgres) GetUserByID(ctx context.Context, id int) (*entity.User, error) {
-	query := `SELECT id, username, email, password_hash, role 
-              FROM users 
+	query := `SELECT id, username, email, password_hash, role
+              FROM users
               WHERE id = $1`
 
 	var user entity.User
@@ -41,9 +43,10 @@ func (p *Postgres) GetUserByID(ctx context.Context, id int) (*entity.User, error
 
 	return &user, nil
 }
+
 func (p *Postgres) GetUserByCredentials(ctx context.Context, login, passwordHash string) (*entity.User, error) {
-	query := `SELECT id, username, email, password_hash, role 
-              FROM users 
+	query := `SELECT id, username, email, password_hash, role
+              FROM users
               WHERE (username = $1 OR email = $1) AND password_hash = $2`
 
 	var user entity.User
@@ -64,9 +67,27 @@ func (p *Postgres) GetUserByCredentials(ctx context.Context, login, passwordHash
 
 	return &user, nil
 }
+func (r *Postgres) GetUserByEmail(ctx context.Context, email string) (*entity.User, error) {
+	query := `SELECT id, username, email, password_hash, role FROM users WHERE email = $1`
+	var user entity.User
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	return &user, nil
+}
 func (p *Postgres) GetUserByLogin(ctx context.Context, login string) (*entity.User, error) {
-	query := `SELECT id, username, email, password_hash, role 
-              FROM users 
+	query := `SELECT id, username, email, password_hash, role
+              FROM users
               WHERE username = $1 OR email = $1`
 
 	var user entity.User
@@ -87,6 +108,7 @@ func (p *Postgres) GetUserByLogin(ctx context.Context, login string) (*entity.Us
 
 	return &user, nil
 }
+
 func NewPostgres(cfg *config.Config) (*Postgres, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -111,48 +133,52 @@ func NewPostgres(cfg *config.Config) (*Postgres, error) {
 }
 
 func (p *Postgres) RunMigrations() error {
-	// Проверка существования файлов миграций
-	// entries, err := migrationsFS.ReadDir("migrations")
-	// if err != nil {
-	// 	return fmt.Errorf("cannot read migrations dir: %w", err)
-	// }
-	// log.Printf("Found %d migration files", len(entries))
+	// Абсолютный путь к директории с миграциями
+	migrationsDir := "C:\\Users\\jopa\\GolandProjects\\awesomeProject\\auth-service\\migrations"
 
-	// // Инициализация миграций
-	// d, err := iofs.New(migrationsFS, "migrations")
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create iofs: %w", err)
+	// Проверка существования директории с миграциями
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("cannot read migrations dir: %w", err)
+	}
+	log.Printf("Found %d migration files", len(entries))
+
+	// Инициализация миграций
+	d, err := iofs.New(os.DirFS(migrationsDir), ".")
+	if err != nil {
+		return fmt.Errorf("failed to create iofs: %w", err)
+	}
+
+	driver, err := postgres.WithInstance(p.db, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("failed to create postgres driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance(
+		"iofs",
+		d,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create migrate instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	version, dirty, err := m.Version()
+	if err != nil && err != migrate.ErrNilVersion {
+		return fmt.Errorf("failed to get migration version: %w", err)
+	}
+
+	log.Printf("Migrations applied. Current version: %d, dirty: %v", version, dirty)
 	return nil
 }
 
-// 	m, err := migrate.NewWithSourceInstance("iofs", d,
-// 		fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-// 			p.cfg.Postgres.User,
-// 			p.cfg.Postgres.Password,
-// 			p.cfg.Postgres.Host,
-// 			p.cfg.Postgres.Port,
-// 			p.cfg.Postgres.DBName,
-// 			p.cfg.Postgres.SSLMode,
-// 		))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create migrate instance: %w", err)
-// 	}
-
-// 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-// 		return fmt.Errorf("failed to apply migrations: %w", err)
-// 	}
-
-// 	version, dirty, err := m.Version()
-// 	if err != nil && err != migrate.ErrNilVersion {
-// 		return fmt.Errorf("failed to get migration version: %w", err)
-// 	}
-
-// 	log.Printf("Migrations applied. Current version: %d, dirty: %v", version, dirty)
-// 	return nil
-// }
-
 func (p *Postgres) CreateUser(ctx context.Context, user *entity.User) error {
-	query := `INSERT INTO users (username, email, password_hash, role) 
+	query := `INSERT INTO users (username, email, password_hash, role)
 	          VALUES ($1, $2, $3, $4) RETURNING id`
 
 	err := p.db.QueryRowContext(ctx, query,
@@ -170,7 +196,7 @@ func (p *Postgres) CreateUser(ctx context.Context, user *entity.User) error {
 }
 
 func (p *Postgres) CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error {
-	query := `INSERT INTO refresh_tokens (user_id, token, expires_at) 
+	query := `INSERT INTO refresh_tokens (user_id, token, expires_at)
 	          VALUES ($1, $2, $3)`
 
 	_, err := p.db.ExecContext(ctx, query,
@@ -187,8 +213,8 @@ func (p *Postgres) CreateRefreshToken(ctx context.Context, token *entity.Refresh
 }
 
 func (p *Postgres) GetRefreshToken(ctx context.Context, token string) (*entity.RefreshToken, error) {
-	query := `SELECT id, user_id, token, expires_at 
-	          FROM refresh_tokens 
+	query := `SELECT id, user_id, token, expires_at
+	          FROM refresh_tokens
 	          WHERE token = $1`
 
 	var rt entity.RefreshToken
