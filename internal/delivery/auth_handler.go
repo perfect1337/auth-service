@@ -123,6 +123,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "successfully logged out"})
 }
+
 func extractToken(c *gin.Context) string {
 	// 1. Проверяем Authorization header
 	tokenString := c.GetHeader("Authorization")
@@ -171,6 +172,7 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 
 			c.Set("user_id", claims["user_id"])
 			c.Set("username", claims["username"])
+
 			c.Next()
 		} else {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})

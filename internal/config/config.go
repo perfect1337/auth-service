@@ -42,7 +42,7 @@ func Load() *Config {
 
 	// Auth
 	cfg.Auth.AccessTokenDuration = 15 * time.Minute
-	cfg.Auth.RefreshTokenDuration = 360 * time.Hour // 15 дней
+	cfg.Auth.RefreshTokenDuration = 360 * time.Hour
 	cfg.Auth.SecretKey = "your-secret-key"
 	cfg.Migrations.Enable = false
 	return cfg
