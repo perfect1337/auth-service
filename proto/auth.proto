@@ -1,8 +1,10 @@
 syntax = "proto3";
+
 package auth;
+option go_package = "github.com/perfect1337/auth-service/proto";
 
 service AuthService {
-  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Login (LoginRequest) returns (LoginResponse) {}
 }
 
 message LoginRequest {
