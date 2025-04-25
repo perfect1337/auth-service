@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -33,7 +34,16 @@ func main() {
 		cfg.Auth.AccessTokenDuration,
 		cfg.Auth.RefreshTokenDuration,
 	)
-
+	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterAuthServiceServer(s, grpc.NewAuthServer(authUC))
+	log.Printf("gRPC server listening at %v", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 	// Initialize HTTP server
 	router := gin.Default()
 

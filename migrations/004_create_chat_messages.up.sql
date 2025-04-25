@@ -1,4 +1,4 @@
--- migrations/004_create_chat_messages.up.sql
+
 CREATE TABLE chat_messages (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
