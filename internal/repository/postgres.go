@@ -194,7 +194,14 @@ func (p *Postgres) CreateUser(ctx context.Context, user *entity.User) error {
 
 	return nil
 }
-
+func (p *Postgres) DeleteUser(ctx context.Context, id int) error {
+	query := `DELETE FROM users WHERE id = $1`
+	_, err := p.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+	return nil
+}
 func (p *Postgres) CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error {
 	query := `INSERT INTO refresh_tokens (user_id, token, expires_at)
 	          VALUES ($1, $2, $3)`

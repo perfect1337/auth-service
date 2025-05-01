@@ -17,13 +17,13 @@ import (
 )
 
 type AuthUseCase struct {
-	repo       repository.UserRepository
+	repo       repository.CompositeRepository
 	SecretKey  string
 	accessTTL  time.Duration
 	refreshTTL time.Duration
 }
 
-func NewAuthUseCase(repo repository.UserRepository, secretKey string, accessTTL, refreshTTL time.Duration) *AuthUseCase {
+func NewAuthUseCase(repo repository.CompositeRepository, secretKey string, accessTTL, refreshTTL time.Duration) *AuthUseCase {
 	return &AuthUseCase{
 		repo:       repo,
 		SecretKey:  secretKey,
@@ -31,7 +31,6 @@ func NewAuthUseCase(repo repository.UserRepository, secretKey string, accessTTL,
 		refreshTTL: refreshTTL,
 	}
 }
-
 func (uc *AuthUseCase) Register(ctx context.Context, username, email, password string) (*entity.AuthResponse, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
