@@ -2,14 +2,18 @@ package main
 
 import (
 	"log"
+	"net"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/delivery"
+	"github.com/perfect1337/auth-service/internal/delivery/grpc"
+	"github.com/perfect1337/auth-service/internal/proto/user"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -34,16 +38,32 @@ func main() {
 		cfg.Auth.RefreshTokenDuration,
 	)
 
+	// Initialize gRPC server
+	grpcServer := grpc.NewServer()
+	user.RegisterUserServiceServer(
+		grpcServer,
+		grpc.NewUserServer(authUC),
+	)
+
+	// Start gRPC server in goroutine
+	go func() {
+		lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+		if err != nil {
+			log.Fatalf("failed to listen: %v", err)
+		}
+		log.Printf("gRPC server listening on :%s", cfg.GRPCPort)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
 	// Initialize HTTP server
 	router := gin.Default()
-
-	// Request logging middleware
 	router.Use(func(c *gin.Context) {
 		log.Printf("Request: %s %s", c.Request.Method, c.Request.URL.Path)
 		c.Next()
 	})
 
-	// CORS configuration
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -56,15 +76,13 @@ func main() {
 	// Initialize handlers
 	authHandler := delivery.NewAuthHandler(authUC)
 
-	// Health check endpoint
+	// Routes
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Auth routes
 	auth := router.Group("/auth")
 	{
-		// Public routes
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.GET("/validate", authHandler.ValidateToken)
@@ -72,7 +90,6 @@ func main() {
 			c.JSON(200, gin.H{"status": "auth ok"})
 		})
 
-		// Protected routes (require authentication)
 		protected := auth.Group("")
 		protected.Use(delivery.AuthMiddleware(cfg))
 		{
@@ -81,8 +98,7 @@ func main() {
 		}
 	}
 
-	// Start server
-	log.Printf("Server is running on port %s", cfg.Server.Port)
+	log.Printf("HTTP server is running on port %s", cfg.Server.Port)
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("failed to run server: %v", err)
 	}
