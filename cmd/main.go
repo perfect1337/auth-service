@@ -3,14 +3,15 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/delivery"
-	"github.com/perfect1337/auth-service/internal/delivery/grpc"
-	"github.com/perfect1337/auth-service/internal/proto/user"
+	grpchandler "github.com/perfect1337/auth-service/internal/delivery/grpc"
+	user "github.com/perfect1337/auth-service/internal/proto"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
 	"google.golang.org/grpc"
@@ -42,16 +43,21 @@ func main() {
 	grpcServer := grpc.NewServer()
 	user.RegisterUserServiceServer(
 		grpcServer,
-		grpc.NewUserServer(authUC),
+		grpchandler.NewUserServer(*repo), // Передаем repo вместо authUC
 	)
 
 	// Start gRPC server in goroutine
 	go func() {
-		lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+		grpcPort := os.Getenv("GRPC_PORT")
+		if grpcPort == "" {
+			grpcPort = "50051" // Значение по умолчанию
+		}
+
+		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
 			log.Fatalf("failed to listen: %v", err)
 		}
-		log.Printf("gRPC server listening on :%s", cfg.GRPCPort)
+		log.Printf("gRPC server listening on :%s", grpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
