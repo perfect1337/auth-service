@@ -9,10 +9,10 @@ import (
 
 type UserServer struct {
 	user.UnimplementedUserServiceServer
-	repo repository.Postgres
+	repo repository.UserRepository
 }
 
-func NewUserServer(repo repository.Postgres) *UserServer {
+func NewUserServer(repo repository.UserRepository) *UserServer {
 	return &UserServer{repo: repo}
 }
 

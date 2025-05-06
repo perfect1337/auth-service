@@ -43,7 +43,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	user.RegisterUserServiceServer(
 		grpcServer,
-		grpchandler.NewUserServer(*repo), // Передаем repo вместо authUC
+		grpchandler.NewUserServer(repo), // Передаем repo вместо authUC
 	)
 
 	// Start gRPC server in goroutine
