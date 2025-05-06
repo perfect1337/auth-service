@@ -13,7 +13,6 @@ type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*entity.User, error)
 	GetUserByLogin(ctx context.Context, login string) (*entity.User, error)
 	GetUserByCredentials(ctx context.Context, login, passwordHash string) (*entity.User, error)
-
 	DeleteUser(ctx context.Context, id int) error
 }
 
@@ -34,7 +33,4 @@ type CompositeRepository interface {
 	UserRepository
 	TokenRepository
 	MigrationManager
-}
-type UserRepository interface {
-	GetUserByID(ctx context.Context, id int) (*entity.User, error)
 }

@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/perfect1337/auth-service/internal/entity"
+	"github.com/perfect1337/auth-service/internal/mocks"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetUserByID(t *testing.T) {
-	mockRepo := new(MockCompositeRepository)
+	mockRepo := new(mocks.MockCompositeRepository)
 	ctx := context.Background()
 
 	user := &entity.User{
@@ -30,7 +31,7 @@ func TestGetUserByID(t *testing.T) {
 }
 
 func TestCreateUser(t *testing.T) {
-	mockRepo := new(MockCompositeRepository)
+	mockRepo := new(mocks.MockCompositeRepository)
 	ctx := context.Background()
 
 	user := &entity.User{
@@ -47,5 +48,3 @@ func TestCreateUser(t *testing.T) {
 
 	mockRepo.AssertExpectations(t)
 }
-
-// Add more tests for other methods similarly...
