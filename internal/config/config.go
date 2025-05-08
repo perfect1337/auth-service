@@ -4,17 +4,20 @@ import (
 	"time"
 )
 
+// PostgresConfig содержит конфигурацию для подключения к PostgreSQL
+type PostgresConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
+// Config содержит общую конфигурацию приложения
 type Config struct {
-	Postgres struct {
-		Host     string
-		Port     string
-		User     string
-		Password string
-		DBName   string
-		SSLMode  string
-		GRPCPort string `mapstructure:"GRPC_PORT"`
-	}
-	Server struct {
+	Postgres PostgresConfig
+	Server   struct {
 		Port string
 	}
 	Auth struct {
@@ -46,5 +49,6 @@ func Load() *Config {
 	cfg.Auth.RefreshTokenDuration = 360 * time.Hour
 	cfg.Auth.SecretKey = "your-secret-key"
 	cfg.Migrations.Enable = false
+
 	return cfg
 }
