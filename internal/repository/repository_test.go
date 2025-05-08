@@ -331,7 +331,6 @@ func TestDeleteRefreshToken(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Создайте тестового пользователя с уникальным именем
 	uniqueSuffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	user := &entity.User{
 		Username:     "testuser" + uniqueSuffix,
@@ -345,7 +344,6 @@ func TestDeleteRefreshToken(t *testing.T) {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	// Создайте тестовый токен
 	expiresAt, _ := time.Parse("2006-01-02", "2023-12-31")
 	token := &entity.RefreshToken{
 		UserID:    user.ID,
@@ -358,11 +356,9 @@ func TestDeleteRefreshToken(t *testing.T) {
 		t.Fatalf("Failed to create test refresh token: %v", err)
 	}
 
-	// Удалите токен
 	err = repo.DeleteRefreshToken(ctx, token.Token)
 	assert.NoError(t, err)
 
-	// Удалите тестового пользователя
 	err = repo.DeleteUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("Failed to delete test user: %v", err)
