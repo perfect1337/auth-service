@@ -13,10 +13,10 @@ import (
 )
 
 type AuthHandler struct {
-	uc *usecase.AuthUseCase
+	uc usecase.AuthUseCase
 }
 
-func NewAuthHandler(uc *usecase.AuthUseCase) *AuthHandler {
+func NewAuthHandler(uc usecase.AuthUseCase) *AuthHandler { // Убрали указатель *
 	return &AuthHandler{uc: uc}
 }
 
@@ -62,16 +62,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.SetCookie(
 		"refresh_token",
 		authResponse.RefreshToken,
-		int(15*24*time.Hour/time.Second), // 15 дней
+		int(15*24*time.Hour/time.Second),
 		"/",
 		"",
 		false,
 		true,
 	)
 
-	c.JSON(http.StatusOK, authResponse)
+	// Возвращаем полную структуру AuthResponse
+	c.JSON(http.StatusOK, gin.H{
+		"AccessToken":  authResponse.AccessToken,
+		"RefreshToken": authResponse.RefreshToken,
+		"User": gin.H{
+			"ID":       authResponse.User.ID,
+			"Username": authResponse.User.Username,
+			"Email":    authResponse.User.Email,
+			"Role":     authResponse.User.Role,
+		},
+	})
 }
-
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
@@ -157,21 +166,17 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		})
 
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error":   "invalid token",
+				"details": err.Error(), // Add this for debugging
+			})
 			return
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			// Проверяем expiration
-			if exp, ok := claims["exp"].(float64); ok {
-				if time.Now().Unix() > int64(exp) {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
-					return
-				}
-			}
-
+			// Add proper type assertions
 			c.Set("user_id", claims["user_id"])
-			c.Set("username", claims["username"])
+			c.Set("username", claims["username"].(string))
 
 			c.Next()
 		} else {
@@ -179,21 +184,22 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		}
 	}
 }
+
 func (h *AuthHandler) ValidateToken(c *gin.Context) {
 	tokenString := c.Query("token")
 	if tokenString == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"valid": false})
+		c.JSON(http.StatusBadRequest, gin.H{"valid": false, "error": "token parameter is required"})
 		return
 	}
 
-	_, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(h.uc.SecretKey), nil
-	})
-
+	valid, err := h.uc.ValidateToken(c.Request.Context(), tokenString)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"valid": false})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"valid": false,
+			"error": "failed to validate token",
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"valid": true})
+	c.JSON(http.StatusOK, gin.H{"valid": valid})
 }

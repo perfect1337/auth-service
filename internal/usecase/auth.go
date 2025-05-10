@@ -16,22 +16,38 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-type AuthUseCase struct {
+type AuthUseCase interface {
+	Register(ctx context.Context, username, email, password string) (*AuthResponse, error)
+	Login(ctx context.Context, email, password string) (*AuthResponse, error)
+	RefreshTokens(ctx context.Context, refreshToken string) (*AuthResponse, error)
+	Logout(ctx context.Context, refreshToken string) error
+	ValidateToken(ctx context.Context, token string) (bool, error)
+	GetSecretKey() (string, error)
+}
+
+type AuthResponse struct {
+	AccessToken  string
+	RefreshToken string
+	User         entity.User
+}
+
+type authUseCase struct {
 	repo       repository.CompositeRepository
 	SecretKey  string
 	accessTTL  time.Duration
 	refreshTTL time.Duration
 }
 
-func NewAuthUseCase(repo repository.CompositeRepository, secretKey string, accessTTL, refreshTTL time.Duration) *AuthUseCase {
-	return &AuthUseCase{
+func NewAuthUseCase(repo repository.CompositeRepository, secretKey string, accessTTL, refreshTTL time.Duration) AuthUseCase {
+	return &authUseCase{
 		repo:       repo,
 		SecretKey:  secretKey,
 		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
 	}
 }
-func (uc *AuthUseCase) Register(ctx context.Context, username, email, password string) (*entity.AuthResponse, error) {
+
+func (uc *authUseCase) Register(ctx context.Context, username, email, password string) (*AuthResponse, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
@@ -51,8 +67,10 @@ func (uc *AuthUseCase) Register(ctx context.Context, username, email, password s
 
 	return uc.generateAuthResponse(ctx, user)
 }
-
-func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*entity.AuthResponse, error) {
+func (uc *authUseCase) GetSecretKey() (string, error) {
+	return uc.SecretKey, nil
+}
+func (uc *authUseCase) Login(ctx context.Context, email, password string) (*AuthResponse, error) {
 	log.Printf("Looking for user with email: %s", email)
 
 	user, err := uc.repo.GetUserByEmail(ctx, email)
@@ -63,13 +81,11 @@ func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*enti
 
 	log.Printf("Found user: %s", user.Username)
 
-	// Проверка пароля
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		log.Printf("Password mismatch for user %s", user.Email)
 		return nil, fmt.Errorf("invalid password")
 	}
 
-	// Генерация токенов
 	accessToken, err := uc.generateAccessToken(user)
 	if err != nil {
 		log.Printf("Failed to generate access token: %v", err)
@@ -82,7 +98,6 @@ func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*enti
 		return nil, fmt.Errorf("failed to generate refresh token")
 	}
 
-	// Сохранение refresh токена
 	if err := uc.repo.CreateRefreshToken(ctx, &entity.RefreshToken{
 		UserID:    user.ID,
 		Token:     refreshToken,
@@ -92,13 +107,14 @@ func (uc *AuthUseCase) Login(ctx context.Context, email, password string) (*enti
 		return nil, fmt.Errorf("failed to save refresh token")
 	}
 
-	return &entity.AuthResponse{
+	return &AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User:         *user,
 	}, nil
 }
-func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (*entity.AuthResponse, error) {
+
+func (uc *authUseCase) RefreshTokens(ctx context.Context, refreshToken string) (*AuthResponse, error) {
 	token, err := uc.repo.GetRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
@@ -113,7 +129,6 @@ func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Delete old refresh token
 	err = uc.repo.DeleteRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete refresh token: %w", err)
@@ -122,11 +137,22 @@ func (uc *AuthUseCase) RefreshTokens(ctx context.Context, refreshToken string) (
 	return uc.generateAuthResponse(ctx, user)
 }
 
-func (uc *AuthUseCase) Logout(ctx context.Context, refreshToken string) error {
+func (uc *authUseCase) Logout(ctx context.Context, refreshToken string) error {
 	return uc.repo.DeleteRefreshToken(ctx, refreshToken)
 }
 
-func (uc *AuthUseCase) generateAuthResponse(ctx context.Context, user *entity.User) (*entity.AuthResponse, error) {
+func (uc *authUseCase) ValidateToken(ctx context.Context, token string) (bool, error) {
+	// Реализация проверки токена
+	_, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		return []byte(uc.SecretKey), nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (uc *authUseCase) generateAuthResponse(ctx context.Context, user *entity.User) (*AuthResponse, error) {
 	accessToken, err := uc.generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -146,14 +172,14 @@ func (uc *AuthUseCase) generateAuthResponse(ctx context.Context, user *entity.Us
 		return nil, fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
-	return &entity.AuthResponse{
+	return &AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User:         *user,
 	}, nil
 }
 
-func (uc *AuthUseCase) generateAccessToken(user *entity.User) (string, error) {
+func (uc *authUseCase) generateAccessToken(user *entity.User) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":  user.ID,
 		"username": user.Username,
@@ -162,10 +188,14 @@ func (uc *AuthUseCase) generateAccessToken(user *entity.User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(uc.SecretKey))
-}
+	tokenString, err := token.SignedString([]byte(uc.SecretKey))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
 
-func (uc *AuthUseCase) generateRefreshToken() (string, time.Time, error) {
+	return tokenString, nil
+}
+func (uc *authUseCase) generateRefreshToken() (string, time.Time, error) {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
