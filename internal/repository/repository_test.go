@@ -7,12 +7,33 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/perfect1337/auth-service/internal/config"
 	"github.com/perfect1337/auth-service/internal/entity"
 	"github.com/stretchr/testify/assert"
 )
 
+func setupTestDB() (*Postgres, error) {
+	cfg := &config.Config{
+		Postgres: config.PostgresConfig{
+			Host:     "localhost",
+			Port:     "5432",
+			User:     "postgres",
+			Password: "postgres",
+			DBName:   "PG",
+			SSLMode:  "disable",
+		},
+	}
+
+	repo, err := NewPostgres(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return repo, nil
+}
+
 func TestGetUserByID(t *testing.T) {
-	repo, err := main.setupTestDB()
+	repo, err := setupTestDB()
 	if err != nil {
 		t.Fatalf("Failed to setup test DB: %v", err)
 	}
@@ -50,7 +71,7 @@ func TestGetUserByID(t *testing.T) {
 }
 
 func TestCreateUser(t *testing.T) {
-	repo, err := main.setupTestDB()
+	repo, err := setupTestDB()
 	if err != nil {
 		t.Fatalf("Failed to setup test DB: %v", err)
 	}
