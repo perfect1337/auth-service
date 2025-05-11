@@ -18,8 +18,9 @@ type PostgresConfig struct {
 type Config struct {
 	Postgres PostgresConfig
 	Server   struct {
-		Port string
-	}
+		Port string `yaml:"port"`
+	} `yaml:"server"`
+
 	Auth struct {
 		AccessTokenDuration  time.Duration
 		RefreshTokenDuration time.Duration
@@ -28,6 +29,15 @@ type Config struct {
 	Migrations struct {
 		Enable bool
 	}
+	Logger struct {
+		LogLevel    string   `yaml:"log_level"`
+		Development bool     `yaml:"development"`
+		Encoding    string   `yaml:"encoding"`
+		OutputPaths []string `yaml:"output_paths"`
+	} `yaml:"logger"`
+	GRPC struct {
+		Port string `yaml:"port"`
+	} `yaml:"grpc"`
 }
 
 func Load() *Config {

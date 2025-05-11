@@ -1,9 +1,7 @@
 package main
 
 import (
-	"log"
 	"net"
-	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -11,6 +9,7 @@ import (
 	"github.com/perfect1337/auth-service/internal/config"
 	grpchandler "github.com/perfect1337/auth-service/internal/delivery/grpc"
 	delivery "github.com/perfect1337/auth-service/internal/delivery/http"
+	"github.com/perfect1337/auth-service/internal/logger"
 	user "github.com/perfect1337/auth-service/internal/proto"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
@@ -20,18 +19,29 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Initialize repository
+	log, err := logger.New(cfg.Logger)
+	if err != nil {
+		panic("failed to initialize logger: " + err.Error())
+	}
+	defer log.Sync()
+
+	// Тестовые сообщения для проверки работы логгера
+	log.Info("Starting auth service...")
+	log.Infow("Loaded configuration",
+		"server_port", cfg.Server.Port,
+		"grpc_port", cfg.GRPC.Port,
+		"log_level", cfg.Logger.LogLevel,
+	)
+
 	repo, err := repository.NewPostgres(cfg)
 	if err != nil {
-		log.Fatalf("failed to initialize repository: %v", err)
+		log.Fatalw("failed to initialize repository", "error", err)
 	}
 
-	// Run migrations
 	if err := repo.RunMigrations(); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		log.Fatalw("failed to run migrations", "error", err)
 	}
 
-	// Initialize usecase
 	authUC := usecase.NewAuthUseCase(
 		repo,
 		cfg.Auth.SecretKey,
@@ -39,36 +49,36 @@ func main() {
 		cfg.Auth.RefreshTokenDuration,
 	)
 
-	// Initialize gRPC server
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(logger.GRPCLoggingInterceptor(log)),
+	)
 	user.RegisterUserServiceServer(
 		grpcServer,
-		grpchandler.NewUserServer(repo), // Передаем repo вместо authUC
+		grpchandler.NewUserServer(repo),
 	)
 
-	// Start gRPC server in goroutine
 	go func() {
-		grpcPort := os.Getenv("GRPC_PORT")
+		grpcPort := cfg.GRPC.Port
 		if grpcPort == "" {
-			grpcPort = "50051" // Значение по умолчанию
+			grpcPort = "50051"
 		}
 
 		lis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
-			log.Fatalf("failed to listen: %v", err)
+			log.Fatalw("failed to listen gRPC", "port", grpcPort, "error", err)
 		}
-		log.Printf("gRPC server listening on :%s", grpcPort)
+
+		log.Infow("gRPC server started", "port", grpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			log.Fatalw("gRPC server failed", "error", err)
 		}
 	}()
 
-	// Initialize HTTP server
-	router := gin.Default()
-	router.Use(func(c *gin.Context) {
-		log.Printf("Request: %s %s", c.Request.Method, c.Request.URL.Path)
-		c.Next()
-	})
+	router := gin.New()
+	router.Use(
+		logger.GinLogger(log),
+		gin.Recovery(),
+	)
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
@@ -79,10 +89,8 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Initialize handlers
 	authHandler := delivery.NewAuthHandler(authUC)
 
-	// Routes
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
@@ -104,8 +112,8 @@ func main() {
 		}
 	}
 
-	log.Printf("HTTP server is running on port %s", cfg.Server.Port)
+	log.Infow("HTTP server starting", "port", cfg.Server.Port)
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("failed to run server: %v", err)
+		log.Fatalw("HTTP server failed", "error", err)
 	}
 }
