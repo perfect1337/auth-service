@@ -13,9 +13,30 @@ import (
 	user "github.com/perfect1337/auth-service/internal/proto"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
+
 	"google.golang.org/grpc"
 )
 
+// @title Auth Service API
+// @version 1.0
+// @description API for user authentication, registration and JWT token management
+// @termsOfService https://github.com/perfect1337/auth-service
+
+// @contact.name API Support
+// @contact.url https://github.com/perfect1337/auth-service/issues
+// @contact.email support@auth-service.com
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /api/v1
+// @schemes http https
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token
 func main() {
 	cfg := config.Load()
 
@@ -97,9 +118,13 @@ func main() {
 
 	auth := router.Group("/auth")
 	{
+
 		auth.POST("/register", authHandler.Register)
+
 		auth.POST("/login", authHandler.Login)
+
 		auth.GET("/validate", authHandler.ValidateToken)
+
 		auth.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "auth ok"})
 		})
@@ -107,6 +132,7 @@ func main() {
 		protected := auth.Group("")
 		protected.Use(delivery.AuthMiddleware(cfg))
 		{
+
 			protected.POST("/refresh", authHandler.Refresh)
 			protected.POST("/logout", authHandler.Logout)
 		}
@@ -116,4 +142,5 @@ func main() {
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalw("HTTP server failed", "error", err)
 	}
+
 }

@@ -81,6 +81,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		},
 	})
 }
+
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
