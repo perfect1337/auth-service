@@ -12,7 +12,7 @@ import (
 )
 
 func TestGetUserByID(t *testing.T) {
-	repo, err := setupTestDB()
+	repo, err := main.setupTestDB()
 	if err != nil {
 		t.Fatalf("Failed to setup test DB: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestGetUserByID(t *testing.T) {
 }
 
 func TestCreateUser(t *testing.T) {
-	repo, err := setupTestDB()
+	repo, err := main.setupTestDB()
 	if err != nil {
 		t.Fatalf("Failed to setup test DB: %v", err)
 	}
