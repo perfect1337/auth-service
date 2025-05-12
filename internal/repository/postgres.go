@@ -134,7 +134,7 @@ func NewPostgres(cfg *config.Config) (*Postgres, error) {
 
 func (p *Postgres) RunMigrations() error {
 	// Абсолютный путь к директории с миграциями
-	migrationsDir := "C:\\Users\\jopa\\GolandProjects\\awesomeProject\\auth-service\\migrations"
+	migrationsDir := "C:\\Users\\Jasmin\\Desktop\\AwesomeProject\\auth-service\\migrations"
 
 	// Проверка существования директории с миграциями
 	entries, err := os.ReadDir(migrationsDir)

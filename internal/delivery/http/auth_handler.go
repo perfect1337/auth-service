@@ -1,3 +1,11 @@
+// @title Auth Service API
+// @version 1.0
+// @description Authentication service API with user management capabilities
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter the token with the `Bearer: ` prefix, e.g. "Bearer abcde12345"
 package delivery
 
 import (
@@ -12,6 +20,51 @@ import (
 	"github.com/perfect1337/auth-service/internal/usecase"
 )
 
+// RegisterRequest представляет данные для регистрации
+type RegisterRequest struct {
+	Username string `json:"username" binding:"required,min=3,max=20" example:"john_doe"`
+	Email    string `json:"email" binding:"required,email" example:"john@example.com"`
+	Password string `json:"password" binding:"required,min=6" example:"secret123"`
+}
+
+// LoginRequest представляет данные для входа
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email" example:"john@example.com"`
+	Password string `json:"password" binding:"required,min=6" example:"secret123"`
+}
+
+// AuthResponse представляет ответ с токенами
+type AuthResponse struct {
+	AccessToken  string `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	User         User   `json:"user"`
+}
+
+// User представляет информацию о пользователе
+type User struct {
+	ID       int    `json:"id" example:"1"`
+	Username string `json:"username" example:"john_doe"`
+	Email    string `json:"email" example:"john@example.com"`
+	Role     string `json:"role" example:"user"`
+}
+
+// ErrorResponse представляет ответ с ошибкой
+type ErrorResponse struct {
+	Error string `json:"error" example:"Invalid credentials"`
+	Code  string `json:"code,omitempty" example:"invalid_credentials"`
+}
+
+// TokenValidationResponse представляет ответ валидации токена
+type TokenValidationResponse struct {
+	Valid bool   `json:"valid" example:"true"`
+	Error string `json:"error,omitempty" example:"Token has expired"`
+}
+
+// MessageResponse представляет простой ответ с сообщением
+type MessageResponse struct {
+	Message string `json:"message" example:"Operation completed successfully"`
+}
+
 // AuthHandler представляет обработчик для аутентификации
 type AuthHandler struct {
 	uc usecase.AuthUseCase
@@ -23,72 +76,79 @@ func NewAuthHandler(uc usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{uc: uc}
 }
 
-// Register регистрирует нового пользователя
-// @Summary Регистрация нового пользователя
-// @Tags Auth
+// Register godoc
+// @Summary Register new user
+// @Description Creates a new user account
+// @Tags auth
 // @Accept json
 // @Produce json
-//
-//	@Param input body struct {
-//		Username string `json:"username" binding:"required,min=3,max=20"`
-//		Email    string `json:"email" binding:"required,email"`
-//		Password string `json:"password" binding:"required,min=6"`
-//	} true "Данные для регистрации"
-//
-// @Success 201 {object} usercase.AuthResponse
-// @Failure 400 {object} map[string]string
-// @Failure 500 {object} map[string]string
+// @Param request body RegisterRequest true "Registration credentials"
+// @Success 201 {object} AuthResponse "Successfully registered"
+// @Failure 400 {object} ErrorResponse "Invalid input data"
+// @Failure 409 {object} ErrorResponse "User already exists"
+// @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req struct {
-		Username string `json:"username" binding:"required,min=3,max=20"`
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=6"`
-	}
+	var req RegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: err.Error(),
+			Code:  "invalid_request",
+		})
 		return
 	}
 
 	authResponse, err := h.uc.Register(c.Request.Context(), req.Username, req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		switch {
+		case err.Error() == "пользователь с таким email уже существует" ||
+			err.Error() == "пользователь с таким username уже существует":
+			c.JSON(http.StatusConflict, ErrorResponse{
+				Error: err.Error(),
+				Code:  "user_already_exists",
+			})
+		default:
+			c.JSON(http.StatusInternalServerError, ErrorResponse{
+				Error: err.Error(),
+				Code:  "registration_failed",
+			})
+		}
 		return
 	}
 
 	c.JSON(http.StatusCreated, authResponse)
 }
 
-// Login выполняет вход пользователя
-// @Summary Вход в систему
-// @Tags Auth
+// Login godoc
+// @Summary Login user
+// @Description Authenticates user and returns tokens
+// @Tags auth
 // @Accept json
 // @Produce json
-//
-//	@Param input body struct {
-//		Email    string `json:"email" binding:"required,email"`
-//		Password string `json:"password" binding:"required,min=6"`
-//	} true "Учетные данные"
-//
-// @Success 200 {object} usercase.AuthResponse
-// @Failure 400 {object} map[string]string
-// @Failure 401 {object} map[string]string
+// @Param request body LoginRequest true "Login credentials"
+// @Success 200 {object} AuthResponse "Successfully authenticated"
+// @Failure 400 {object} ErrorResponse "Invalid input data"
+// @Failure 401 {object} ErrorResponse "Invalid credentials"
+// @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=6"`
-	}
+	var req LoginRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: err.Error(),
+			Code:  "invalid_request",
+		})
 		return
 	}
 
 	authResponse, err := h.uc.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: "Неверные учетные данные",
+			Code:  "invalid_credentials",
+		})
 		return
 	}
 
@@ -103,35 +163,35 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		true,
 	)
 
-	c.JSON(http.StatusOK, gin.H{
-		"AccessToken":  authResponse.AccessToken,
-		"RefreshToken": authResponse.RefreshToken,
-		"User": gin.H{
-			"ID":       authResponse.User.ID,
-			"Username": authResponse.User.Username,
-			"Email":    authResponse.User.Email,
-			"Role":     authResponse.User.Role,
-		},
-	})
+	c.JSON(http.StatusOK, authResponse)
 }
 
-// Refresh обновляет токены доступа
-// @Summary Обновление токенов
-// @Tags Auth
+// Refresh godoc
+// @Summary Refresh tokens
+// @Description Refreshes access and refresh tokens using refresh token from cookie
+// @Tags auth
 // @Produce json
-// @Success 200 {object} usercase.AuthResponse
-// @Failure 401 {object} map[string]string
+// @Security BearerAuth
+// @Success 200 {object} AuthResponse "Tokens successfully refreshed"
+// @Failure 401 {object} ErrorResponse "Invalid or expired refresh token"
+// @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "refresh token required"})
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: "Требуется refresh token",
+			Code:  "refresh_token_required",
+		})
 		return
 	}
 
 	authResponse, err := h.uc.RefreshTokens(c.Request.Context(), refreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: err.Error(),
+			Code:  "invalid_refresh_token",
+		})
 		return
 	}
 
@@ -148,23 +208,29 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, authResponse)
 }
 
-// Logout выполняет выход пользователя
-// @Summary Выход из системы
-// @Tags Auth
+// Logout godoc
+// @Summary Logout user
+// @Description Invalidates refresh token and clears cookie
+// @Tags auth
 // @Produce json
-// @Success 200 {object} map[string]string
-// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Success 200 {object} MessageResponse "Successfully logged out"
+// @Failure 401 {object} ErrorResponse "Invalid token"
+// @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "already logged out"})
+		c.JSON(http.StatusOK, MessageResponse{Message: "Уже вышли из системы"})
 		return
 	}
 
 	err = h.uc.Logout(c.Request.Context(), refreshToken)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error: err.Error(),
+			Code:  "logout_failed",
+		})
 		return
 	}
 
@@ -178,35 +244,39 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		true,
 	)
 
-	c.JSON(http.StatusOK, gin.H{"message": "successfully logged out"})
+	c.JSON(http.StatusOK, MessageResponse{Message: "Успешный выход из системы"})
 }
 
-// ValidateToken проверяет валидность токена
-// @Summary Проверка токена
-// @Tags Auth
+// ValidateToken godoc
+// @Summary Validate token
+// @Description Validates JWT token
+// @Tags auth
 // @Produce json
-// @Param token query string true "Токен для проверки"
-// @Success 200 {object} map[string]interface{} "valid: boolean"
-// @Failure 400 {object} map[string]string
-// @Failure 500 {object} map[string]string
+// @Param token query string true "JWT token to validate"
+// @Success 200 {object} TokenValidationResponse "Token validation result"
+// @Failure 400 {object} ErrorResponse "Missing token"
+// @Failure 500 {object} ErrorResponse "Validation error"
 // @Router /auth/validate [get]
 func (h *AuthHandler) ValidateToken(c *gin.Context) {
 	tokenString := c.Query("token")
 	if tokenString == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"valid": false, "error": "token parameter is required"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "Требуется параметр token",
+			Code:  "token_required",
+		})
 		return
 	}
 
 	valid, err := h.uc.ValidateToken(c.Request.Context(), tokenString)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"valid": false,
-			"error": "failed to validate token",
+		c.JSON(http.StatusInternalServerError, TokenValidationResponse{
+			Valid: false,
+			Error: "Ошибка проверки токена",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"valid": valid})
+	c.JSON(http.StatusOK, TokenValidationResponse{Valid: valid})
 }
 
 // AuthMiddleware middleware для проверки аутентификации
@@ -216,21 +286,24 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := extractToken(c)
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authorization token required"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+				Error: "Требуется токен авторизации",
+				Code:  "token_required",
+			})
 			return
 		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+				return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
 			}
 			return []byte(cfg.Auth.SecretKey), nil
 		})
 
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error":   "invalid token",
-				"details": err.Error(),
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+				Error: "Недействительный токен",
+				Code:  "invalid_token",
 			})
 			return
 		}
@@ -240,7 +313,10 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Set("username", claims["username"].(string))
 			c.Next()
 		} else {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+				Error: "Недействительные данные токена",
+				Code:  "invalid_claims",
+			})
 		}
 	}
 }

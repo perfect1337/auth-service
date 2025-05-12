@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	_ "github.com/perfect1337/auth-service/docs"
 	"github.com/perfect1337/auth-service/internal/config"
 	grpchandler "github.com/perfect1337/auth-service/internal/delivery/grpc"
 	delivery "github.com/perfect1337/auth-service/internal/delivery/http"
@@ -21,7 +22,6 @@ import (
 // @title Auth Service API
 // @version 1.0
 // @description API для аутентификации и управления пользователями
-// @termsOfService http://swagger.io/terms/
 
 // @contact.name API Support
 // @contact.url https://github.com/perfect1337/auth-service/issues
@@ -31,13 +31,14 @@ import (
 // @license.url https://opensource.org/licenses/MIT
 
 // @host localhost:8080
-// @BasePath /api/v1
-// @schemes http https
+// @BasePath /
+// @schemes http
 
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// @description Type "Bearer" followed by a space and JWT token
+// @description JWT token для авторизации. Используйте "Bearer" перед токеном
+
 func main() {
 	cfg := config.Load()
 
@@ -47,7 +48,6 @@ func main() {
 	}
 	defer log.Sync()
 
-	// Тестовые сообщения для проверки работы логгера
 	log.Info("Starting auth service...")
 	log.Infow("Loaded configuration",
 		"server_port", cfg.Server.Port,
@@ -113,19 +113,17 @@ func main() {
 
 	authHandler := delivery.NewAuthHandler(authUC)
 
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	auth := router.Group("/auth")
 	{
-
 		auth.POST("/register", authHandler.Register)
-
 		auth.POST("/login", authHandler.Login)
-
 		auth.GET("/validate", authHandler.ValidateToken)
-
 		auth.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "auth ok"})
 		})
@@ -133,7 +131,6 @@ func main() {
 		protected := auth.Group("")
 		protected.Use(delivery.AuthMiddleware(cfg))
 		{
-
 			protected.POST("/refresh", authHandler.Refresh)
 			protected.POST("/logout", authHandler.Logout)
 		}
@@ -143,5 +140,4 @@ func main() {
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalw("HTTP server failed", "error", err)
 	}
-
 }

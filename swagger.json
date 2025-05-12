@@ -1,0 +1,14 @@
+{
+  "output": "docs",
+  "dir": ".",
+  "parseDependency": true,
+  "parseInternal": false,
+  "parseDepth": 5,
+  "generatedTime": true,
+  "code": {
+    "output": "docs/swagger",
+    "includes": null,
+    "excludes": null
+  },
+  "outputTypes": ["json", "yaml"]
+}

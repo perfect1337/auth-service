@@ -48,6 +48,18 @@ func NewAuthUseCase(repo repository.CompositeRepository, secretKey string, acces
 }
 
 func (uc *authUseCase) Register(ctx context.Context, username, email, password string) (*AuthResponse, error) {
+	// Проверяем, существует ли пользователь с таким email
+	existingUser, err := uc.repo.GetUserByEmail(ctx, email)
+	if err == nil && existingUser != nil {
+		return nil, fmt.Errorf("пользователь с таким email уже существует")
+	}
+
+	// Проверяем, существует ли пользователь с таким username
+	existingUser, err = uc.repo.GetUserByLogin(ctx, username)
+	if err == nil && existingUser != nil {
+		return nil, fmt.Errorf("пользователь с таким username уже существует")
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
@@ -67,9 +79,11 @@ func (uc *authUseCase) Register(ctx context.Context, username, email, password s
 
 	return uc.generateAuthResponse(ctx, user)
 }
+
 func (uc *authUseCase) GetSecretKey() (string, error) {
 	return uc.SecretKey, nil
 }
+
 func (uc *authUseCase) Login(ctx context.Context, email, password string) (*AuthResponse, error) {
 	log.Printf("Looking for user with email: %s", email)
 
@@ -195,6 +209,7 @@ func (uc *authUseCase) generateAccessToken(user *entity.User) (string, error) {
 
 	return tokenString, nil
 }
+
 func (uc *authUseCase) generateRefreshToken() (string, time.Time, error) {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)

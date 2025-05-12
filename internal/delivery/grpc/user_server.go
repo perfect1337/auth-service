@@ -8,6 +8,11 @@ import (
 	"github.com/perfect1337/auth-service/internal/repository"
 )
 
+// GetUsername godoc
+// @Summary Получить имя пользователя
+// @Description Возвращает имя пользователя по ID
+// @Tags Users
+// @Accept json
 type UserServer struct {
 	user.UnimplementedUserServiceServer
 	repo repository.UserRepository
