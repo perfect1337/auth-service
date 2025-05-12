@@ -12,14 +12,33 @@ import (
 	"github.com/perfect1337/auth-service/internal/usecase"
 )
 
+// AuthHandler представляет обработчик для аутентификации
 type AuthHandler struct {
 	uc usecase.AuthUseCase
 }
 
-func NewAuthHandler(uc usecase.AuthUseCase) *AuthHandler { // Убрали указатель *
+// NewAuthHandler создает новый экземпляр AuthHandler
+// @Summary Создает новый обработчик аутентификации
+func NewAuthHandler(uc usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{uc: uc}
 }
 
+// Register регистрирует нового пользователя
+// @Summary Регистрация нового пользователя
+// @Tags Auth
+// @Accept json
+// @Produce json
+//
+//	@Param input body struct {
+//		Username string `json:"username" binding:"required,min=3,max=20"`
+//		Email    string `json:"email" binding:"required,email"`
+//		Password string `json:"password" binding:"required,min=6"`
+//	} true "Данные для регистрации"
+//
+// @Success 201 {object} usercase.AuthResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required,min=3,max=20"`
@@ -41,6 +60,21 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, authResponse)
 }
 
+// Login выполняет вход пользователя
+// @Summary Вход в систему
+// @Tags Auth
+// @Accept json
+// @Produce json
+//
+//	@Param input body struct {
+//		Email    string `json:"email" binding:"required,email"`
+//		Password string `json:"password" binding:"required,min=6"`
+//	} true "Учетные данные"
+//
+// @Success 200 {object} usercase.AuthResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
@@ -69,7 +103,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		true,
 	)
 
-	// Возвращаем полную структуру AuthResponse
 	c.JSON(http.StatusOK, gin.H{
 		"AccessToken":  authResponse.AccessToken,
 		"RefreshToken": authResponse.RefreshToken,
@@ -82,6 +115,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// Refresh обновляет токены доступа
+// @Summary Обновление токенов
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} usercase.AuthResponse
+// @Failure 401 {object} map[string]string
+// @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
@@ -108,6 +148,13 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, authResponse)
 }
 
+// Logout выполняет выход пользователя
+// @Summary Выход из системы
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
@@ -134,23 +181,37 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "successfully logged out"})
 }
 
-func extractToken(c *gin.Context) string {
-	// 1. Проверяем Authorization header
-	tokenString := c.GetHeader("Authorization")
-	if tokenString != "" {
-		return strings.Replace(tokenString, "Bearer ", "", 1)
+// ValidateToken проверяет валидность токена
+// @Summary Проверка токена
+// @Tags Auth
+// @Produce json
+// @Param token query string true "Токен для проверки"
+// @Success 200 {object} map[string]interface{} "valid: boolean"
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/validate [get]
+func (h *AuthHandler) ValidateToken(c *gin.Context) {
+	tokenString := c.Query("token")
+	if tokenString == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"valid": false, "error": "token parameter is required"})
+		return
 	}
 
-	// 2. Проверяем cookie
-	tokenString, _ = c.Cookie("access_token")
-	if tokenString != "" {
-		return tokenString
+	valid, err := h.uc.ValidateToken(c.Request.Context(), tokenString)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"valid": false,
+			"error": "failed to validate token",
+		})
+		return
 	}
 
-	// 3. Проверяем query parameter
-	tokenString = c.Query("token")
-	return tokenString
+	c.JSON(http.StatusOK, gin.H{"valid": valid})
 }
+
+// AuthMiddleware middleware для проверки аутентификации
+// @Security ApiKeyAuth
+// @Param Authorization header string true "Bearer {token}"
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := extractToken(c)
@@ -169,16 +230,14 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "invalid token",
-				"details": err.Error(), // Add this for debugging
+				"details": err.Error(),
 			})
 			return
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			// Add proper type assertions
 			c.Set("user_id", claims["user_id"])
 			c.Set("username", claims["username"].(string))
-
 			c.Next()
 		} else {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
@@ -186,21 +245,16 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func (h *AuthHandler) ValidateToken(c *gin.Context) {
-	tokenString := c.Query("token")
-	if tokenString == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"valid": false, "error": "token parameter is required"})
-		return
+func extractToken(c *gin.Context) string {
+	tokenString := c.GetHeader("Authorization")
+	if tokenString != "" {
+		return strings.Replace(tokenString, "Bearer ", "", 1)
 	}
 
-	valid, err := h.uc.ValidateToken(c.Request.Context(), tokenString)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"valid": false,
-			"error": "failed to validate token",
-		})
-		return
+	tokenString, _ = c.Cookie("access_token")
+	if tokenString != "" {
+		return tokenString
 	}
 
-	c.JSON(http.StatusOK, gin.H{"valid": valid})
+	return c.Query("token")
 }

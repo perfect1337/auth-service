@@ -13,14 +13,15 @@ import (
 	user "github.com/perfect1337/auth-service/internal/proto"
 	"github.com/perfect1337/auth-service/internal/repository"
 	"github.com/perfect1337/auth-service/internal/usecase"
-
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"google.golang.org/grpc"
 )
 
 // @title Auth Service API
 // @version 1.0
-// @description API for user authentication, registration and JWT token management
-// @termsOfService https://github.com/perfect1337/auth-service
+// @description API для аутентификации и управления пользователями
+// @termsOfService http://swagger.io/terms/
 
 // @contact.name API Support
 // @contact.url https://github.com/perfect1337/auth-service/issues
@@ -115,7 +116,7 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
-
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	auth := router.Group("/auth")
 	{
 

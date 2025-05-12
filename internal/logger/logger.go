@@ -14,18 +14,16 @@ type Logger struct {
 	*zap.SugaredLogger
 }
 
-// Config содержит конфигурацию логгера
 type Config struct {
 	LogLevel    string   `yaml:"log_level"`
 	Development bool     `yaml:"development"`
-	Encoding    string   `yaml:"encoding"` // Убедитесь, что это установлено в допустимый тип кодировщика
+	Encoding    string   `yaml:"encoding"`
 	OutputPaths []string `yaml:"output_paths"`
 }
 
 func New(cfg Config) (*Logger, error) {
-	// Установите кодировщик по умолчанию, если он не указан
 	if cfg.Encoding == "" {
-		cfg.Encoding = "json" // или "console" в зависимости от ваших нужд
+		cfg.Encoding = "json"
 	}
 
 	logLevel := zapcore.InfoLevel

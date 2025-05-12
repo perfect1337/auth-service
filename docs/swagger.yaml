@@ -1,29 +1,183 @@
+openapi: 3.0.0
 info:
-  contact: {}
-paths: {}
-swagger: "2.0"
-basePath: /api/v1
-host: localhost:8080
-info:
-  contact:
-    email: support@auth-service.com
-    name: API Support
-    url: https://github.com/perfect1337/auth-service/issues
-  description: API for user authentication, registration and JWT token management
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-  termsOfService: https://github.com/perfect1337/auth-service
   title: Auth Service API
-  version: "1.0"
-paths: {}
-schemes:
-- http
-- https
-securityDefinitions:
-  BearerAuth:
-    description: Type "Bearer" followed by a space and JWT token
-    in: header
-    name: Authorization
-    type: apiKey
-swagger: "2.0"
+  description: API для аутентификации и управления пользователями
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер разработки
+  - url: https://api.yourdomain.com
+    description: Продакшен сервер
+
+tags:
+  - name: Auth
+    description: Аутентификация и авторизация
+  - name: Users
+    description: Управление пользователями
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Неверные входные данные
+        '409':
+          description: Пользователь с таким email/логином уже существует
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные учетные данные
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление токена
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Токен успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Недействительный refresh token
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Получить информацию о пользователе
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ID пользователя
+      responses:
+        '200':
+          description: Информация о пользователе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          description: Пользователь не найден
+
+components:
+  schemas:
+    UserRegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          example: "ivan_ivanov"
+        email:
+          type: string
+          format: email
+          example: "ivan@example.com"
+        password:
+          type: string
+          format: password
+          example: "strongpassword123"
+        role:
+          type: string
+          example: "user"
+
+    LoginRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          description: Email или username
+          example: "ivan@example.com"
+        password:
+          type: string
+          format: password
+          example: "strongpassword123"
+
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_in:
+          type: integer
+          example: 3600
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        username:
+          type: string
+          example: "ivan_ivanov"
+        email:
+          type: string
+          format: email
+          example: "ivan@example.com"
+        role:
+          type: string
+          example: "user"
+        created_at:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
