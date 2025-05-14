@@ -19,6 +19,15 @@ func TestRegister_Success(t *testing.T) {
 	mockRepo := new(mocks.MockCompositeRepository)
 	uc := usecase.NewAuthUseCase(mockRepo, "test_secret", time.Hour, 24*time.Hour)
 
+	// Мокируем проверку существования пользователя по email
+	mockRepo.On("GetUserByEmail", mock.Anything, "test@example.com").
+		Return(nil, errors.New("user not found"))
+
+	// Мокируем проверку существования пользователя по username
+	mockRepo.On("GetUserByLogin", mock.Anything, "testuser").
+		Return(nil, errors.New("user not found"))
+
+	// Мокируем создание пользователя
 	mockRepo.On("CreateUser", mock.Anything, mock.AnythingOfType("*entity.User")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
@@ -26,6 +35,7 @@ func TestRegister_Success(t *testing.T) {
 			user.ID = 1
 		})
 
+	// Мокируем создание refresh токена
 	mockRepo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*entity.RefreshToken")).
 		Return(nil)
 
@@ -43,14 +53,19 @@ func TestRegister_UserExists(t *testing.T) {
 	mockRepo := new(mocks.MockCompositeRepository)
 	uc := usecase.NewAuthUseCase(mockRepo, "test_secret", time.Hour, 24*time.Hour)
 
-	mockRepo.On("CreateUser", mock.Anything, mock.Anything).
-		Return(errors.New("user already exists"))
+	// Мокируем проверку существования пользователя по email
+	mockRepo.On("GetUserByEmail", mock.Anything, "exists@test.com").
+		Return(&entity.User{
+			ID:       1,
+			Username: "existing",
+			Email:    "exists@test.com",
+		}, nil)
 
 	resp, err := uc.Register(context.Background(), "existing", "exists@test.com", "password")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
-	assert.Contains(t, err.Error(), "failed to create user")
+	assert.Contains(t, err.Error(), "пользователь с таким email уже существует")
 	mockRepo.AssertExpectations(t)
 }
 
