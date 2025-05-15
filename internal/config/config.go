@@ -2,6 +2,8 @@ package config
 
 import (
 	"time"
+
+	"github.com/perfect1337/logger"
 )
 
 // PostgresConfig содержит конфигурацию для подключения к PostgreSQL
@@ -29,13 +31,8 @@ type Config struct {
 	Migrations struct {
 		Enable bool
 	}
-	Logger struct {
-		LogLevel    string   `yaml:"log_level"`
-		Development bool     `yaml:"development"`
-		Encoding    string   `yaml:"encoding"`
-		OutputPaths []string `yaml:"output_paths"`
-	} `yaml:"logger"`
-	GRPC struct {
+	Logger logger.Config `yaml:"logger"`
+	GRPC   struct {
 		Port string `yaml:"port"`
 	} `yaml:"grpc"`
 }
@@ -58,6 +55,18 @@ func Load() *Config {
 	cfg.Auth.AccessTokenDuration = 15 * time.Minute
 	cfg.Auth.RefreshTokenDuration = 360 * time.Hour
 	cfg.Auth.SecretKey = "your-secret-key"
+
+	// Logger
+	cfg.Logger = logger.Config{
+		LogLevel:    "debug",
+		Development: true,
+		Encoding:    "console",
+		OutputPaths: []string{"stdout"},
+	}
+
+	// GRPC
+	cfg.GRPC.Port = "50051"
+
 	cfg.Migrations.Enable = false
 
 	return cfg
