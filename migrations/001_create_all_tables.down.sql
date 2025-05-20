@@ -2,4 +2,4 @@ DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS refresh_tokens;
 DROP TABLE IF EXISTS posts;
 DROP TABLE IF EXISTS comments;
-DROP TABLE IF EXISTS chat_messages;
+DROP TABLE IF EXISTS chat_messages; 
