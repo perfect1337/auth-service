@@ -12,11 +12,12 @@ import (
 	delivery "github.com/perfect1337/auth-service/internal/delivery/http"
 	user "github.com/perfect1337/auth-service/internal/proto"
 	"github.com/perfect1337/auth-service/internal/repository"
+	
 	"github.com/perfect1337/auth-service/internal/usecase"
-	"github.com/perfect1337/logger"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"google.golang.org/grpc"
+	logg "github.com/perfect1337/logger"
 )
 
 // @title Auth Service API
@@ -42,7 +43,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	log, err := logger.New(cfg.Logger)
+	log, err := logg.New(cfg.Logger)
 	if err != nil {
 		panic("failed to initialize logger: " + err.Error())
 	}
@@ -72,7 +73,7 @@ func main() {
 	)
 
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(logger.GRPCLoggingInterceptor(log)),
+		grpc.UnaryInterceptor(logg.GRPCLoggingInterceptor(log)),
 	)
 	user.RegisterUserServiceServer(
 		grpcServer,
@@ -98,7 +99,7 @@ func main() {
 
 	router := gin.New()
 	router.Use(
-		logger.GinLogger(log),
+		logg.GinLogger(log),
 		gin.Recovery(),
 	)
 
